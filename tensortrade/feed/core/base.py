@@ -2,6 +2,7 @@
 import inspect
 
 from abc import abstractmethod
+from collections.abc import Iterator
 from typing import (
     Generic,
     Iterable,
@@ -511,12 +512,16 @@ class IterableStream(Stream[T]):
     def __init__(self, source: "Iterable[T]", dtype: str = None):
         super().__init__(dtype=dtype)
         self.is_gen = False
+        self.is_iter = False
         self.iterable = None
 
         if inspect.isgeneratorfunction(source):
             self.gen_fn = source
             self.is_gen = True
             self.generator = self.gen_fn()
+        elif isinstance(source, Iterator):
+            self.is_iter = True
+            self.generator = source
         else:
             self.iterable = source
             self.generator = iter(source)
@@ -529,6 +534,8 @@ class IterableStream(Stream[T]):
             self.stop = True
 
         self._random_start = 0
+
+        self.source = source
 
     def forward(self) -> T:
         v = self.current
@@ -547,6 +554,8 @@ class IterableStream(Stream[T]):
 
         if self.is_gen:
             self.generator = self.gen_fn()
+        elif self.is_iter:
+            self.generator = self.source.reset()
         else:
             self.generator = iter(self.iterable[self._random_start:])
         self.stop = False
