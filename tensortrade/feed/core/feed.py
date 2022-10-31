@@ -23,7 +23,7 @@ class DataFeed(Stream[dict]):
         if streams:
             self.__call__(*streams)
 
-    def compile(self) -> None:
+    def compile(self, start_date=None) -> None:
         """Compiles all the given stream together.
 
         Organizes the order in which streams should be run to get valid output.
@@ -32,34 +32,34 @@ class DataFeed(Stream[dict]):
 
         self.process = self.toposort(edges)
         self.compiled = True
-        self.reset()
+        self.reset(start_date=start_date)
 
-    def run(self) -> None:
+    def run(self, start_date=None) -> None:
         """Runs all the streams in processing order."""
         if not self.compiled:
-            self.compile()
+            self.compile(start_date=start_date)
 
         for s in self.process:
-            s.run()
+            s.run(start_date=start_date)
 
-        super().run()
+        super().run(start_date=start_date)
 
     def forward(self) -> dict:
         return {s.name: s.value for s in self.inputs}
 
-    def next(self) -> dict:
-        self.run()
+    def next(self, start_date=None) -> dict:
+        self.run(start_date=start_date)
         return self.value
 
     def has_next(self) -> bool:
         return all(s.has_next() for s in self.process)
 
-    def reset(self, random_start=0) -> None:
+    def reset(self, random_start=0, start_date=None) -> None:
         for s in self.process:
             if isinstance(s, IterableStream):
-                s.reset(random_start)
+                s.reset(random_start, start_date=start_date)
             else:
-                s.reset()
+                s.reset(start_date=start_date)
 
 
 class PushFeed(DataFeed):

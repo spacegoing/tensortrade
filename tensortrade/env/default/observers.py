@@ -16,6 +16,9 @@ from tensortrade.env.generic import Observer
 from collections import OrderedDict
 
 
+DEBUG=True
+
+
 def _create_wallet_source(wallet: 'Wallet', include_worth: bool = True) -> 'List[Stream[float]]':
     """Creates a list of streams to describe a `Wallet`.
 
@@ -188,6 +191,8 @@ class TensorTradeObserver(Observer):
                  renderer_feed: 'DataFeed' = None,
                  window_size: int = 1,
                  min_periods: int = None,
+                 start_date=None,
+                 reuse_as_renderer_list=None,
                  **kwargs) -> None:
         internal_group = Stream.group(_create_internal_streams(portfolio)).rename("internal")
         external_group = Stream.group(feed.inputs).rename("external")
@@ -215,7 +220,10 @@ class TensorTradeObserver(Observer):
 
         self.history = ObservationHistory(window_size=window_size)
 
-        initial_obs = self.feed.next()["external"]
+        self.start_date = start_date
+        self.reuse_as_renderer_list = reuse_as_renderer_list
+
+        initial_obs = self.feed.next(start_date=start_date)["external"]
         n_features = len(initial_obs.keys())
 
         self._observation_space = Box(
@@ -229,7 +237,7 @@ class TensorTradeObserver(Observer):
 
         self.renderer_history = []
 
-        self.feed.reset()
+        self.feed.reset(start_date=start_date)
         self.warmup()
 
     @property
@@ -258,6 +266,13 @@ class TensorTradeObserver(Observer):
         """
         data = self.feed.next()
 
+        if self.reuse_as_renderer_list:
+            rder_dict = {}
+            for r in self.reuse_as_renderer_list:
+                for k in data['external'].keys():
+                    if k.endswith(r):
+                        rder_dict[r]=data['external'][k]
+            data["renderer"].update(rder_dict)
         # Save renderer information to history
         if "renderer" in data.keys():
             self.renderer_history += [data["renderer"]]
@@ -268,6 +283,10 @@ class TensorTradeObserver(Observer):
 
         obs = self.history.observe()
         obs = obs.astype(self._observation_dtype)
+
+        # debug add:
+        if DEBUG:
+            self.data_debug = data
         return obs
 
     def has_next(self) -> bool:
@@ -280,11 +299,11 @@ class TensorTradeObserver(Observer):
         """
         return self.feed.has_next()
 
-    def reset(self, random_start=0) -> None:
+    def reset(self, random_start=0, start_date=None) -> None:
         """Resets the observer"""
         self.renderer_history = []
         self.history.reset()
-        self.feed.reset(random_start)
+        self.feed.reset(random_start, start_date=start_date)
         self.warmup()
 
 

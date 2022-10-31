@@ -21,6 +21,9 @@ def create(portfolio: 'Portfolio',
            window_size: int = 1,
            min_periods: int = None,
            random_start_pct: float = 0.00,
+           start_date = None,
+           random_date_list = None,
+           reuse_as_renderer_list = None,
            **kwargs) -> TradingEnv:
     """Creates the default `TradingEnv` of the project to be used in training
     RL agents.
@@ -62,7 +65,9 @@ def create(portfolio: 'Portfolio',
         feed=feed,
         renderer_feed=kwargs.get("renderer_feed", None),
         window_size=window_size,
-        min_periods=min_periods
+        min_periods=min_periods,
+        start_date=start_date,
+        reuse_as_renderer_list=reuse_as_renderer_list,
     )
 
     stopper = stoppers.MaxLossStopper(
@@ -91,5 +96,7 @@ def create(portfolio: 'Portfolio',
         renderer=renderer,
         min_periods=min_periods,
         random_start_pct=random_start_pct,
+        random_date_list = random_date_list,
+        reuse_as_renderer_list = reuse_as_renderer_list
     )
     return env

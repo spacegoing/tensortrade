@@ -165,7 +165,7 @@ class Stream(Generic[T], Named, Observable):
         self.inputs = inputs
         return self
 
-    def run(self) -> None:
+    def run(self, start_date=None) -> None:
         """Runs the underlying streams once and iterates forward."""
         self.value = self.forward()
         for listener in self.listeners:
@@ -210,14 +210,14 @@ class Stream(Generic[T], Named, Observable):
         mixin = Stream._mixins[dtype]
         return Stream.extend_instance(self, mixin)
 
-    def reset(self) -> None:
+    def reset(self, start_date=None) -> None:
         """Resets all inputs to and listeners of the stream and sets stream value to None."""
         for listener in self.listeners:
             if hasattr(listener, "reset"):
-                listener.reset()
-        
+                listener.reset(start_date=start_date)
+
         for stream in self.inputs:
-            stream.reset()
+            stream.reset(start_date=start_date)
 
         self.value = None
 
@@ -548,14 +548,14 @@ class IterableStream(Stream[T]):
     def has_next(self):
         return not self.stop
 
-    def reset(self, random_start=0):
+    def reset(self, random_start=0, start_date=None):
         if random_start != 0:
             self._random_start = random_start
 
         if self.is_gen:
             self.generator = self.gen_fn()
         elif self.is_iter:
-            self.generator = self.source.reset()
+            self.generator = self.source.reset(start_date=start_date)
         else:
             self.generator = iter(self.iterable[self._random_start:])
         self.stop = False

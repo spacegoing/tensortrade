@@ -16,7 +16,7 @@ import uuid
 import logging
 
 from typing import Dict, Any, Tuple
-from random import randint
+from random import randint, choice
 
 import gym
 import numpy as np
@@ -68,6 +68,8 @@ class TradingEnv(gym.Env, TimeIndexed):
                  min_periods: int = None,
                  max_episode_steps: int = None,
                  random_start_pct: float = 0.00,
+                 random_date_list = None,
+                 reuse_as_renderer_list = None,
                  **kwargs) -> None:
         super().__init__()
         self.clock = Clock()
@@ -80,6 +82,9 @@ class TradingEnv(gym.Env, TimeIndexed):
         self.renderer = renderer
         self.min_periods = min_periods
         self.random_start_pct = random_start_pct
+
+        self.random_date_list = random_date_list
+        self.reuse_as_renderer_list = reuse_as_renderer_list
 
         # Register the environment in Gym and fetch spec
         gym.envs.register(
@@ -160,10 +165,22 @@ class TradingEnv(gym.Env, TimeIndexed):
         self.episode_id = str(uuid.uuid4())
         self.clock.reset()
 
+
         for c in self.components.values():
             if hasattr(c, "reset"):
                 if isinstance(c, Observer):
-                    c.reset(random_start=random_start)
+                    if self.random_date_list:
+                        start_date = choice(self.random_date_list)[0]
+                        print('#' * 30)
+                        print(start_date)
+                        print(start_date)
+                        print(start_date)
+                        print(start_date)
+                        print('#' * 30)
+                        self.start_date=start_date
+                        c.reset(start_date=self.start_date)
+                    else:
+                        c.reset(random_start=random_start)
                 else:
                     c.reset()
 
