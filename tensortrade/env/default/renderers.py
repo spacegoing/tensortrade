@@ -525,6 +525,8 @@ class PlotlyTradingChart(BaseRenderer):
 
         if self._show_chart:
             self.fig.show()
+        else:
+            self.save()
 
     def save(self) -> None:
         """Saves the current chart to a file.
