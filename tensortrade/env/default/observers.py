@@ -16,9 +16,6 @@ from tensortrade.env.generic import Observer
 from collections import OrderedDict
 
 
-DEBUG=True
-
-
 def _create_wallet_source(wallet: 'Wallet', include_worth: bool = True) -> 'List[Stream[float]]':
     """Creates a list of streams to describe a `Wallet`.
 
@@ -269,8 +266,8 @@ class TensorTradeObserver(Observer):
         if self.reuse_as_renderer_list:
             rder_dict = {}
             for r in self.reuse_as_renderer_list:
-                for k in data['external'].keys():
-                    if k.endswith(r):
+                for k in data['external']:
+                    if k.endswith('/'+r):
                         rder_dict[r]=data['external'][k]
             data["renderer"].update(rder_dict)
         # Save renderer information to history
@@ -284,9 +281,7 @@ class TensorTradeObserver(Observer):
         obs = self.history.observe()
         obs = obs.astype(self._observation_dtype)
 
-        # debug add:
-        if DEBUG:
-            self.data_debug = data
+        self.data_debug = data
         return obs
 
     def has_next(self) -> bool:

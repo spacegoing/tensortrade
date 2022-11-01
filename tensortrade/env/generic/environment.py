@@ -171,12 +171,12 @@ class TradingEnv(gym.Env, TimeIndexed):
                 if isinstance(c, Observer):
                     if self.random_date_list:
                         start_date = choice(self.random_date_list)[0]
-                        print('#' * 30)
-                        print(start_date)
-                        print(start_date)
-                        print(start_date)
-                        print(start_date)
-                        print('#' * 30)
+                        # print('#' * 30)
+                        # print(start_date)
+                        # print(start_date)
+                        # print(start_date)
+                        # print(start_date)
+                        # print('#' * 30)
                         self.start_date=start_date
                         c.reset(start_date=self.start_date)
                     else:
