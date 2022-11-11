@@ -96,12 +96,14 @@ class RiskAdjustedReturns(TensorTradeRewardScheme):
                  window_size: int = 1) -> None:
         algorithm = self.default('return_algorithm', return_algorithm)
 
-        assert algorithm in ['sharpe', 'sortino']
+        assert algorithm in ['sharpe', 'sortino', 'calmar']
 
         if algorithm == 'sharpe':
             return_algorithm = self._sharpe_ratio
         elif algorithm == 'sortino':
             return_algorithm = self._sortino_ratio
+        elif algorithm == 'calmar':
+            return_algorithm = self._calmar_ratio
 
         self._return_algorithm = return_algorithm
         self._risk_free_rate = self.default('risk_free_rate', risk_free_rate)
@@ -151,6 +153,32 @@ class RiskAdjustedReturns(TensorTradeRewardScheme):
         downside_std = np.sqrt(np.std(downside_returns))
 
         return (expected_return - self._risk_free_rate + 1e-9) / (downside_std + 1e-9)
+
+    def _calmar_ratio(self, returns: 'pd.Series') -> float:
+        """Computes the sortino ratio for a given series of a returns.
+
+        Parameters
+        ----------
+        returns : `pd.Series`
+            The returns for the `portfolio`.
+
+        Returns
+        -------
+        float
+            The sortino ratio for the given series of a `returns`.
+
+        References
+        ----------
+        .. [1] https://en.wikipedia.org/wiki/Sortino_ratio
+        """
+        comp_ret = (returns+1).cumprod()
+        peak = comp_ret.expanding(min_periods=1).max()
+        dd = (comp_ret/peak)-1
+        max_dd = abs(dd.min())
+
+        expected_return = np.mean(returns)
+
+        return (expected_return - self._risk_free_rate + 1e-9) / (max_dd + 1e-9)
 
     def get_reward(self, portfolio: 'Portfolio') -> float:
         """Computes the reward corresponding to the selected risk-adjusted return metric.
