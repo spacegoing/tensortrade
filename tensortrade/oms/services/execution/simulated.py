@@ -51,10 +51,11 @@ def execute_buy_order(order: 'Order',
     # If the user has specified a non-zero commission percentage, it has to be higher
     # than the instrument precision, otherwise the minimum precision value is used.
     minimum_commission = Decimal(10) ** -filled.instrument.precision
+    # SG: When all cash buys BTC, only float residual left in cash wallet
     if options.commission > 0 and commission < minimum_commission:
-        logging.warning("Commission is > 0 but less than instrument precision. "
-                        "Setting commission to the minimum allowed amount. "
-                        "Consider defining a custom instrument with a higher precision.")
+        # logging.warning("Commission is > 0 but less than instrument precision. "
+        #                 "Setting commission to the minimum allowed amount. "
+        #                 "Consider defining a custom instrument with a higher precision.")
         commission.size = minimum_commission
 
     quantity = filled - commission
@@ -117,16 +118,25 @@ def execute_sell_order(order: 'Order',
 
     commission = options.commission * filled
 
-    # If the user has specified a non-zero commission percentage, it has to be higher
-    # than the instrument precision, otherwise the minimum precision value is used.
-    minimum_commission = Decimal(10) ** -filled.instrument.precision
-    if options.commission > 0 and commission < minimum_commission:
-        logging.warning("Commission is > 0 but less than instrument precision. "
-                        "Setting commission to the minimum allowed amount. "
-                        "Consider defining a custom instrument with a higher precision.")
-        commission.size = minimum_commission
+    # SG: deduct commission from USDT wallet rather than BTC
+    cms = commission.convert(order.exchange_pair)
+    # unlock cms (quantity.is_locked: bool(self.path_id))
+    cms.path_id = None
+    if cms < base_wallet.balance:
+        base_wallet.withdraw(cms, "SELL_COMMISSION")
+        quantity = filled
+        commission *= 0.0
+    else: # cash not sufficient for cms
+        # If the user has specified a non-zero commission percentage, it has to be higher
+        # than the instrument precision, otherwise the minimum precision value is used.
+        minimum_commission = Decimal(10) ** -filled.instrument.precision
+        if options.commission > 0 and commission < minimum_commission:
+            logging.warning("Commission is > 0 but less than instrument precision. "
+                            "Setting commission to the minimum allowed amount. "
+                            "Consider defining a custom instrument with a higher precision.")
+            commission.size = minimum_commission
 
-    quantity = filled - commission
+        quantity = filled - commission
 
     # Transfer Funds from Quote Wallet to Base Wallet
     transfer = Wallet.transfer(

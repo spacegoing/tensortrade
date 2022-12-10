@@ -251,6 +251,7 @@ class SimpleOrders(TensorTradeActionScheme):
 
         (ep, (criteria, proportion, duration, side)) = self.actions[action]
 
+        # USD for buy side / BTC for sell side
         instrument = side.instrument(ep.pair)
         wallet = portfolio.get_wallet(ep.exchange.id, instrument=instrument)
 
