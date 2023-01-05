@@ -59,7 +59,7 @@ class DataFeed(Stream[dict]):
             if isinstance(s, IterableStream):
                 s.reset(random_start, start_date=start_date)
             else:
-                s.reset(start_date=start_date)
+                s.reset()
 
 
 class PushFeed(DataFeed):

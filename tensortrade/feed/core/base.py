@@ -217,7 +217,7 @@ class Stream(Generic[T], Named, Observable):
                 listener.reset(start_date=start_date)
 
         for stream in self.inputs:
-            stream.reset(start_date=start_date)
+            stream.reset()
 
         self.value = None
 
