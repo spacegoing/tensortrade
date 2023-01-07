@@ -325,15 +325,9 @@ class Wallet(Identifiable):
 
         quantity = source.withdraw(quantity, "FILL ORDER")
 
-        if quantity.instrument == exchange_pair.pair.base:
-            instrument = exchange_pair.pair.quote
-            converted_size = quantity.size / exchange_pair.price
-        else:
-            instrument = exchange_pair.pair.base
-            converted_size = quantity.size * exchange_pair.price
+        converted = quantity.convert(exchange_pair)
 
-        converted = Quantity(instrument, converted_size, quantity.path_id).quantize()
-
+        # import ipdb; ipdb.set_trace(context=7)
         converted = target.deposit(converted, 'TRADED {} {} @ {}'.format(quantity,
                                                                          exchange_pair,
                                                                          exchange_pair.price))

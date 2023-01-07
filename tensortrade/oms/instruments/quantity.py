@@ -59,6 +59,7 @@ class Quantity:
 
         self.instrument = instrument
         self.size = size if isinstance(size, Decimal) else Decimal(size)
+        self.size = self.size.quantize(Decimal(10)**-self.instrument.precision)
         self.path_id = path_id
 
     @property
@@ -277,6 +278,7 @@ class Quantity:
         """
         left, right = Quantity.validate(left, right)
         size = op(left.size, right.size)
+        size = size.quantize(Decimal(10)**-left.instrument.precision)
         return Quantity(left.instrument, size, left.path_id)
 
     def __add__(self, other: "Quantity") -> "Quantity":

@@ -115,6 +115,7 @@ class Order(TimedIdentifiable, Observable):
         self._specs = []
         self.trades = []
 
+        # import pdb; pdb.set_trace()
         wallet = portfolio.get_wallet(
             self.exchange_pair.exchange.id,
             self.side.instrument(self.exchange_pair.pair)
