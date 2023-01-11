@@ -26,7 +26,7 @@ from tensortrade.core.exceptions import (
     QuantityNotLocked
 )
 from tensortrade.oms.instruments import Instrument, Quantity, ExchangePair
-from tensortrade.oms.orders import Order
+from tensortrade.oms.orders import Order, TradeSide
 from tensortrade.oms.exchanges import Exchange
 from tensortrade.oms.wallets.ledger import Ledger
 
@@ -79,14 +79,14 @@ class Wallet(Identifiable):
         """The current quantities that are locked for orders. (`Dict[str, Quantity]`, read-only)"""
         return self._locked
 
-    def lock(self, quantity, order: 'Order', reason: str) -> 'Quantity':
+    def lock(self, quantity, path_id, reason: str) -> 'Quantity':
         """Locks funds for specified order.
 
         Parameters
         ----------
         quantity : `Quantity`
             The amount of funds to lock for the order.
-        order : `Order`
+        path_id : `Order.path_id`
             The order funds will be locked for.
         reason : str
             The reason for locking funds.
@@ -114,7 +114,7 @@ class Wallet(Identifiable):
 
         self.balance -= quantity
 
-        quantity = quantity.lock_for(order.path_id)
+        quantity = quantity.lock_for(path_id)
 
         if quantity.path_id not in self._locked:
             self._locked[quantity.path_id] = quantity
@@ -278,9 +278,8 @@ class Wallet(Identifiable):
     def transfer(source: 'Wallet',
                  target: 'Wallet',
                  quantity: 'Quantity',
-                 commission: 'Quantity',
                  exchange_pair: 'ExchangePair',
-                 reason: str) -> 'Transfer':
+                 side: TradeSide) -> 'Transfer':
         """Transfers funds from one wallet to another.
 
         Parameters
@@ -292,9 +291,6 @@ class Wallet(Identifiable):
         quantity : `Quantity`
             The quantity to be transferred from the source to the target.
             In terms of the instrument of the source wallet.
-        commission :  `Quantity`
-            The commission to be taken from the source wallet for performing
-            the transfer of funds.
         exchange_pair : `ExchangePair`
             The exchange pair associated with the transfer
         reason : str
@@ -311,56 +307,59 @@ class Wallet(Identifiable):
             Raised if an equation that describes the conservation of funds
             is broken.
         """
+        # Only for checking correctness
+        sb1 = source.total_balance
+        tb1 = target.total_balance
+
+        # Transfer
         quantity = quantity.quantize()
-        commission = commission.quantize()
-
-        pair = source.instrument / target.instrument
-        poid = quantity.path_id
-
-        lsb1 = source.locked.get(poid).size
-        ltb1 = target.locked.get(poid, 0 * pair.quote).size
-
-        if commission.as_float() > 0.0:
-            commission = source.withdraw(commission, "COMMISSION")
-
         quantity = source.withdraw(quantity, "FILL ORDER")
-
-        if quantity.instrument == exchange_pair.pair.base:
-            instrument = exchange_pair.pair.quote
-            converted_size = quantity.size / exchange_pair.price
-        else:
-            instrument = exchange_pair.pair.base
-            converted_size = quantity.size * exchange_pair.price
-
-        converted = Quantity(instrument, converted_size, quantity.path_id).quantize()
-
+        converted = quantity.convert(exchange_pair)
         converted = target.deposit(converted, 'TRADED {} {} @ {}'.format(quantity,
                                                                          exchange_pair,
                                                                          exchange_pair.price))
 
-        lsb2 = source.locked.get(poid).size
-        ltb2 = target.locked.get(poid, 0 * pair.quote).size
+        # Pay COMMISSION: always withdraw from base wallet and transfer full amount
+        # of order's quantity.
+        fee_rate = source.exchange.options.commission
+        if side == TradeSide.BUY:
+            commission = quantity * fee_rate
+            # commission inherits path_id from quantity but not locked
+            # needs to be free first.
+            commission = commission.free()
+            commission = source.lock(commission, quantity.path_id, "LOCK BUY COMMISSION")
+            commission = source.withdraw(commission, "PAY BUY COMMISSION")
+        else:
+            # deduct commission from base (USDT) wallet rather than quote (BTC)
+            commission = converted * fee_rate
+            # commission inherits path_id from quantity but not locked
+            # needs to be free first.
+            commission = commission.free()
+            commission = target.lock(commission, quantity.path_id, "LOCK SELL COMMISSION")
+            commission = target.withdraw(commission, "PAY SELL COMMISSION")
 
-        q = quantity.size
-        c = commission.size
-        cv = converted.size
-        p = exchange_pair.inverse_price if pair == exchange_pair.pair else exchange_pair.price
-
-        source_quantization = Decimal(10) ** -source.instrument.precision
-        target_quantization = Decimal(10) ** -target.instrument.precision
-
-        lhs = Decimal((lsb1 - lsb2) - (q + c)).quantize(source_quantization)
-        rhs = Decimal(ltb2 - ltb1 - cv).quantize(target_quantization)
-
-        lhs_eq_zero = np.isclose(float(lhs), 0, atol=float(source_quantization))
-        rhs_eq_zero = np.isclose(float(rhs), 0, atol=float(target_quantization))
-
-        if not lhs_eq_zero or not rhs_eq_zero:
-            equation = "({} - {}) - ({} + {}) != ({} - {}) - {}   [LHS = {}, RHS = {}, Price = {}]".format(
-                lsb1, lsb2, q, c, ltb2, ltb1, cv, lhs, rhs, p
-            )
-
-            raise Exception("Invalid Transfer: " + equation)
+        # Correctness Check
+        sb2 = source.total_balance
+        spent = sb1 - sb2
+        tb2 = target.total_balance
+        def check_diff(a,b):
+            '''
+            [8169cac] Bug: Quantity.convert() Decimal precision Error:
+            quantity = Decimal('872699.73182794')
+            quantity.convert(exchange_pair).convert(exchange_pair) == Decimal('872699.73182786')
+            '''
+            if a>b:
+                return a-b<0.00001
+            else:
+                return b-a<0.00001
+        if side == TradeSide.BUY:
+            # convert from quote to base
+            deposited = (tb2-tb1).convert(exchange_pair)
+            assert check_diff(spent, (deposited + commission))
+        else:
+            # convert from quote to base, add commission before convert to avoid precision underflow
+            deposited = (tb2-tb1 + commission).convert(exchange_pair)
+            assert check_diff(spent, deposited)
 
         return Transfer(quantity, commission, exchange_pair.price)
 

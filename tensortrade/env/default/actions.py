@@ -166,6 +166,138 @@ class BSH(TensorTradeActionScheme):
     self.action = 0
 
 
+class PositionOrders(TensorTradeActionScheme):
+  """A discrete action scheme that determines actions based on a list of
+    trading pairs, order criteria, and trade sizes.
+
+    Parameters
+    ----------
+    criteria : List[OrderCriteria]
+        A list of order criteria to select from when submitting an order.
+        (e.g. MarketOrder, LimitOrder w/ price, StopLoss, etc.)
+    trade_sizes : List[float]
+        A list of trade sizes to select from when submitting an order.
+        (e.g. '[1, 1/3]' = 100% or 33% of balance is tradable.
+        '4' = 25%, 50%, 75%, or 100% of balance is tradable.)
+    durations : List[int]
+        A list of durations to select from when submitting an order.
+    trade_type : TradeType
+        A type of trade to make.
+    order_listener : OrderListener
+        A callback class to use for listening to steps of the order process.
+    min_order_pct : float
+        The minimum value when placing an order, calculated in percent over net_worth.
+    min_order_abs : float
+        The minimum value when placing an order, calculated in absolute order value.
+    """
+
+  def __init__(self,
+               criteria: 'Union[List[OrderCriteria], OrderCriteria]' = None,
+               trade_sizes: 'Union[List[float], int]' = 10,
+               durations: 'Union[List[int], int]' = None,
+               trade_type: 'TradeType' = TradeType.MARKET,
+               order_listener: 'OrderListener' = None,
+               min_order_pct: float = 0.02,
+               min_order_abs: float = 0.00) -> None:
+    super().__init__()
+    self.min_order_pct = min_order_pct
+    self.min_order_abs = min_order_abs
+    criteria = self.default('criteria', criteria)
+    self.criteria = criteria if isinstance(criteria, list) else [criteria]
+
+    trade_sizes = self.default('trade_sizes', trade_sizes)
+    if isinstance(trade_sizes, list):
+      self.trade_sizes = trade_sizes
+    else:
+      self.trade_sizes = [(x + 1) / trade_sizes for x in range(trade_sizes)]
+
+    durations = self.default('durations', durations)
+    self.durations = durations if isinstance(durations, list) else [durations]
+
+    self._trade_type = self.default('trade_type', trade_type)
+    self._order_listener = self.default('order_listener', order_listener)
+
+    self._action_space = None
+    self.actions = None
+
+  @property
+  def action_space(self) -> Space:
+    if not self._action_space:
+      self.actions = product(self.criteria, self.trade_sizes, self.durations)
+      self.actions = list(self.actions)
+      self.actions = list(product(self.portfolio.exchange_pairs, self.actions))
+      self.actions = [None] + self.actions
+
+      self._action_space = Discrete(len(self.actions))
+    return self._action_space
+
+  def get_orders(self, action: int, portfolio: 'Portfolio') -> 'List[Order]':
+
+    if action == 0:
+      return []
+
+    (ep, (criteria, proportion, duration)) = self.actions[action]
+
+    base_wallet = portfolio.get_wallet(ep.exchange.id, instrument=ep.pair.base)
+    quote_wallet = portfolio.get_wallet(
+        ep.exchange.id, instrument=ep.pair.quote)
+    quote = quote_wallet.balance
+    quote_worth = quote.convert(ep)
+    # recompute net_worth because tt's precision bug; doced in readme
+    net_worth = quote_worth + base_wallet.balance
+
+    # filterout small transactions caused by price rather than agent's action
+    min_threshold = 0.05
+    # position is now measured in base instrument (USDT)
+    position = net_worth * proportion
+    if quote_worth == position:
+      return []
+    elif quote_worth > position:
+      side = TradeSide.SELL
+      vol = quote_worth - position
+      if vol.as_float() / net_worth.as_float() < min_threshold:
+        return []
+      # SELL consumes BTC, convert back to quote instrument
+      vol = vol.convert(ep)
+    else:
+      side = TradeSide.BUY
+      vol = position - quote_worth
+      if vol.as_float() / net_worth.as_float() < min_threshold:
+        return []
+
+      volt_upbound = 100
+      # left enough cash in wallet in case sell all positions
+      cms = position * ep.exchange.options.commission * volt_upbound # 100 is safe margin
+      # (1 * ep.pair.base) means 1 USDT, prevent precision underflow
+      if base_wallet.balance - vol < cms + (1 * ep.pair.base):
+        if vol <= cms:
+          return []
+        else:
+          vol -= cms
+
+    # cms = cms.quantize()
+    # vol = vol.quantize()
+    # if self.clock.step >= 166:
+    #   print(self.clock.step)
+    #   import ipdb
+    #   ipdb.set_trace(context=7)
+    order = Order(
+        step=self.clock.step,
+        side=side,
+        trade_type=self._trade_type,
+        exchange_pair=ep,
+        price=ep.price,
+        quantity=vol,
+        criteria=criteria,
+        end=self.clock.step + duration if duration else None,
+        portfolio=portfolio)
+    # import pdb; pdb.set_trace()
+    if self._order_listener is not None:
+      order.attach(self._order_listener)
+
+    return [order]
+
+
 class SimpleOrders(TensorTradeActionScheme):
   """A discrete action scheme that determines actions based on a list of
     trading pairs, order criteria, and trade sizes.

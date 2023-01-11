@@ -59,6 +59,7 @@ class Quantity:
 
         self.instrument = instrument
         self.size = size if isinstance(size, Decimal) else Decimal(size)
+        self.size = self.size.quantize(Decimal(10)**-self.instrument.precision)
         self.path_id = path_id
 
     @property
@@ -96,13 +97,14 @@ class Quantity:
         `Quantity`
             The value of the current quantity in terms of the quote instrument.
         """
+        price = float(exchange_pair.price)
         if self.instrument == exchange_pair.pair.base:
             instrument = exchange_pair.pair.quote
-            converted_size = self.size / exchange_pair.price
+            converted  = Quantity._math_op(self, price, operator.truediv)
         else:
             instrument = exchange_pair.pair.base
-            converted_size = self.size * exchange_pair.price
-        return Quantity(instrument, converted_size, self.path_id)
+            converted  = Quantity._math_op(self, price, operator.mul)
+        return Quantity(instrument, converted.size, self.path_id)
 
     def free(self) -> "Quantity":
         """Gets the free version of this quantity.

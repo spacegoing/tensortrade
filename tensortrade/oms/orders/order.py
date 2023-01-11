@@ -121,7 +121,7 @@ class Order(TimedIdentifiable, Observable):
         )
 
         if self.path_id not in wallet.locked.keys():
-            self.quantity = wallet.lock(quantity, self, "LOCK FOR ORDER")
+            self.quantity = wallet.lock(quantity, self.path_id, "LOCK FOR ORDER")
 
         self.remaining = self.quantity
 
@@ -243,7 +243,7 @@ class Order(TimedIdentifiable, Observable):
         """
         self.status = OrderStatus.PARTIALLY_FILLED
 
-        filled = trade.quantity + trade.commission
+        filled = trade.quantity
 
         self.remaining -= filled
         self.trades += [trade]
